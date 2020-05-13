@@ -3,9 +3,9 @@
 ## Overview
 During the COVID-19 pandemic, hospital systems postponed non-essential medical procedures to accomodate surge of critically-ill patients. We built a high-throughput pipeline that identifies procedures negatively impacted by COVID-19 and evaluates associations between procedure delay and patient outcomes. Our pipeline is implemented for EHRs using the OMOP Common Data Model.
 
-Reference:
+**Reference**:
 
-Please direct any questions to neil.zheng@vumc.org and wei-qi.wei@vumc.org
+**Please direct questions to**: neil.zheng@vumc.org and wei-qi.wei@vumc.org
 
 ## Requirements
 * OMOP Common Data Model Version 5
