@@ -5,6 +5,8 @@ During the COVID-19 pandemic, hospital systems postponed non-essential medical p
 
 Reference:
 
+Please direct any questions to neil.zheng@vumc.org and wei-qi.wei@vumc.org
+
 ## Requirements
 * OMOP Common Data Model Version 5
 * R Packages:
@@ -14,7 +16,11 @@ Reference:
 
 
 ## Installation
-    
-    sudo pip install git+git://github.com/nszheng/procedure-delay.git
+ * Clone or download repository in desired location. 
+ * Update procedure_delay.r for database connection settings and various desired filters. 
+ 
+
+
+
 
 
