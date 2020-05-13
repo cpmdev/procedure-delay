@@ -5,7 +5,7 @@ During the COVID-19 pandemic, hospital systems postponed non-essential medical p
 
 **Reference**:
 
-**Please direct questions to**: neil.zheng@vumc.org and wei-qi.wei@vumc.org
+Please direct questions to neil.zheng@vumc.org and wei-qi.wei@vumc.org
 
 ## Requirements
 * OMOP Common Data Model Version 5
@@ -21,6 +21,7 @@ During the COVID-19 pandemic, hospital systems postponed non-essential medical p
    * Input database connection settings
    * Update procedure and diagnosis filters
    * Adjust SQL code as needed if using different table or view names 
+ * Additional details included in procedure_delay.r
  
 
 
