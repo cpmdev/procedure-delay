@@ -17,7 +17,10 @@ Please direct any questions to neil.zheng@vumc.org and wei-qi.wei@vumc.org
 
 ## Installation
  * Clone or download repository in desired location. 
- * Update procedure_delay.r for database connection settings and various desired filters. 
+ * Update procedure_delay.r for your analysis
+       * Input database connection settings
+       * Update procedure and diagnosis filters
+       * Adjust SQL code as needed if using different table or view names 
  
 
 
