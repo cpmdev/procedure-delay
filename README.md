@@ -1,7 +1,7 @@
-# Minimizing health costs of procedure delay during COVID-19
+# Evaluating potential adverse patient outcomes associated with delay of procedures due to COVID-19
 
 ## Overview
-During the COVID-19 pandemic, hospital systems postponed non-essential medical procedures to accomodate surge of critically-ill patients. We built a high-throughput pipeline that identifies procedures negatively impacted by COVID-19 and evaluates associations between procedure delay and patient outcomes. Our pipeline is implemented for EHRs using the OMOP Common Data Model.
+During the coronavirus disease of 2019 (COVID-19), hospital systems postponed non-essential medical procedures to accommodate a surge of critically ill patients, and patients avoided hospital visits for routine healthcare. We developed two complementary approaches, one for inpatient surgical procedures and the other for outpatient screening tests, to help hospital systems understand and predict the impact of delaying procedures on patient health outcomes using historical electronic health record (EHR) data. 
 
 **Reference**:
 
