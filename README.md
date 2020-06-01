@@ -24,8 +24,8 @@ Please direct questions to neil.zheng@vumc.org and wei-qi.wei@vumc.org
    * Input database connection settings
    * Update procedure and diagnosis filters
    * Adjust SQL code as needed if using different table names
-   * Adjust R code as needed for analysis if using different covariates or outcomes
-   (Note: we included insurance information as a covariate which is not OMOP CDM)
+   * Adjust R code as needed for analysis if using different covariates or outcomes <br/>
+   (Note: we included insurance information as a covariate and cancer stage at diagnosis as an outcome, both of which are not OMOP CDM)
  * Additional details included in surgical_delay.r or screening_delay.r 
  
 
