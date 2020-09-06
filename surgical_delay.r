@@ -799,7 +799,7 @@ analyze_proc_delay <- function(data, icd, procedure){
                       stringsAsFactors=FALSE)
   
   # Subsetting data by ICD and CPT
-  data_subset <- data[data$ICD == icd & data$PROC_GROUP == procedure,]
+  data_subset <- data[data$ICD == icd & data$CONCEPT_CODE_D == procedure,]
   
   
   # Creating formula based on if predictors have at least 2 factor levels (ADJUST COVARIATES AS NEEDED)
