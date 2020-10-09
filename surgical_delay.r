@@ -151,7 +151,7 @@ executeSql(conn,
               -- getting procedure groupings
               inner join
               (select * from proc_group) as con
-              on proc.procedure_source_value = con.concept_code_d
+              on proc.procedure_concept_id = con.descendant_concept_id
               -- selecting timeframe and grouping for counts
               where procedure_date between date('@a') and date('@b')
               group by concept_id, sab, concept_name, concept_code
@@ -181,7 +181,7 @@ executeSql(conn,
               -- getting procedure groupings
               inner join
               (select * from proc_group) as con
-              on proc.procedure_source_value = con.concept_code_d
+              on proc.procedure_concept_id = con.descendant_concept_id
               -- selecting timeframe and grouping for counts
               where procedure_date between date('@a') and date('@b')
               group by concept_id, sab, concept_name, concept_code
@@ -211,7 +211,7 @@ executeSql(conn,
               -- getting procedure groupings
               inner join
               (select * from proc_group) as con
-              on proc.procedure_source_value = con.concept_code_d
+              on proc.procedure_concept_id = con.descendant_concept_id
               -- selecting timeframe and grouping for counts
               where procedure_date between date('@a') and date('@b')
               group by concept_id, sab, concept_name, concept_code
@@ -338,7 +338,7 @@ executeSql(conn,
            (select * from proc_group
              where ancestor_concept_id in
              (select concept_id from proc_filtered_binom)) as con
-           on proc.procedure_source_value = con.concept_code_d
+           on proc.procedure_concept_id = con.descendant_concept_id
            -- joining all conditions
            inner join
            (select person_id, visit_occurrence_id, condition_start_date, 
