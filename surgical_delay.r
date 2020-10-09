@@ -14,14 +14,17 @@
 #       Preliminary setup          #
 ####################################
 
-# Set working directory
-setwd('WORKING_DIRECTORY')
+# Set save location
+saveLoc = ''
 
 
 # Loading required libraries
 library(dplyr)
 library(SqlRender)
 library(DatabaseConnector)
+
+# Flags for variables (ADJUST AS NEEDED SINCE THIS IS NOT OMOP)
+haveInsurance = T # extracting insurance information for each patient
 
 
 # Defining database connection variables
@@ -121,18 +124,6 @@ executeSql(conn,
 #########################################################
 #       Counting procedures within timeframes           #
 #########################################################
-# Making connection to RD
-server <- "ori-netezza.vumc.org/CPM_OMOP_RD_DAILY"
-connectionDetails <- createConnectionDetails(dbms=dbms, 
-                                             server=server, 
-                                             user=user, 
-                                             password=pw, 
-                                             port=port,
-                                             pathToDriver = driver_path)
-conn <- connect(connectionDetails)
-
-
-
 
 # Adjust below timeframes as needed
 timeframe_2018 <- c('2018-03-19', '2018-04-25')
@@ -143,8 +134,8 @@ timeframe_2020 <- c('2020-03-18', '2020-04-24')
 # Counting procedures in 2018
 executeSql(conn,
            render(
-             "drop table CPM_OMOP_RD_DAILY..proc_count_2018 if exists;
-              create table CPM_OMOP_RD_DAILY..proc_count_2018 as 
+             "drop table proc_count_2018 if exists;
+              create table proc_count_2018 as 
               select ancestor_concept_id as concept_id, sab, concept_name, concept_code,
               -- counting total number of unique patients during window
               count(distinct proc.person_id) as count_2018, 
@@ -159,7 +150,7 @@ executeSql(conn,
               on proc.visit_occurrence_id = visit.visit_occurrence_id
               -- getting procedure groupings
               inner join
-              (select * from DENNY_OMOP_SD..proc_group) as con
+              (select * from proc_group) as con
               on proc.procedure_source_value = con.concept_code_d
               -- selecting timeframe and grouping for counts
               where procedure_date between date('@a') and date('@b')
@@ -173,8 +164,8 @@ executeSql(conn,
 # Counting procedures in 2019
 executeSql(conn,
            render(
-             "drop table CPM_OMOP_RD_DAILY..proc_count_2019 if exists;
-              create table CPM_OMOP_RD_DAILY..proc_count_2019 as 
+             "drop table proc_count_2019 if exists;
+              create table proc_count_2019 as 
               select ancestor_concept_id as concept_id, sab, concept_name, concept_code,
               -- counting total number of unique patients during window
               count(distinct proc.person_id) as count_2019, 
@@ -189,7 +180,7 @@ executeSql(conn,
               on proc.visit_occurrence_id = visit.visit_occurrence_id
               -- getting procedure groupings
               inner join
-              (select * from DENNY_OMOP_SD..proc_group) as con
+              (select * from proc_group) as con
               on proc.procedure_source_value = con.concept_code_d
               -- selecting timeframe and grouping for counts
               where procedure_date between date('@a') and date('@b')
@@ -203,8 +194,8 @@ executeSql(conn,
 # Counting procedures in 2020
 executeSql(conn,
            render(
-             "drop table CPM_OMOP_RD_DAILY..proc_count_2020 if exists;
-              create table CPM_OMOP_RD_DAILY..proc_count_2020 as 
+             "drop table proc_count_2020 if exists;
+              create table proc_count_2020 as 
               select ancestor_concept_id as concept_id, sab, concept_name, concept_code,
               -- counting total number of unique patients during window
               count(distinct proc.person_id) as count_2020, 
@@ -219,7 +210,7 @@ executeSql(conn,
               on proc.visit_occurrence_id = visit.visit_occurrence_id
               -- getting procedure groupings
               inner join
-              (select * from DENNY_OMOP_SD..proc_group) as con
+              (select * from proc_group) as con
               on proc.procedure_source_value = con.concept_code_d
               -- selecting timeframe and grouping for counts
               where procedure_date between date('@a') and date('@b')
@@ -233,19 +224,19 @@ executeSql(conn,
 # Exporting count data for analysis (left joining everything with anchor 2019 timeframe)
 count <- querySql(conn,
                   "select proc_2019.*, COUNT_2020, TOTAL_2020, COUNT_2018, TOTAL_2018 from 
-                  CPM_OMOP_RD_DAILY..proc_count_2019 as proc_2019
+                  proc_count_2019 as proc_2019
                     -- joining with 2020 procedure counts
                     left join 
-                    (select * from CPM_OMOP_RD_DAILY..proc_count_2020) as proc_2020
+                    (select * from proc_count_2020) as proc_2020
                     on proc_2019.CONCEPT_CODE = proc_2020.CONCEPT_CODE 
                     -- joining with 2018 procedure counts
                     left join 
-                    (select * from CPM_OMOP_RD_DAILY..proc_count_2018) as proc_2018
+                    (select * from proc_count_2018) as proc_2018
                     on proc_2019.CONCEPT_CODE = proc_2018.CONCEPT_CODE
                    ")
 
 # Writing table of negatively impacted procedures
-write.table(count, './data/proc_counts.csv', sep = ',', row.names=FALSE)
+write.table(count, file.path(saveLoc, './data/proc_counts.csv'), sep = ',', row.names=FALSE)
 
 
 ############################################################
@@ -313,7 +304,7 @@ filtered <- merged %>%
 
 
 # Writing table of negatively impacted procedures
-write.table(filtered, './output/surg_proc_neg_impact_2020.csv', sep = ',', row.names=FALSE)
+write.table(filtered, file.path(saveLoc, './output/surg_proc_neg_impact_2020.csv'), sep = ',', row.names=FALSE)
 
 
 # Inserting negatively impacted procedures back into database
@@ -560,7 +551,7 @@ delay <- querySql(conn,
 )
 
 # Writing delays to csv
-write.table(delay, './data/surg_proc_delay.csv', sep=',', row.names=FALSE)
+write.table(delay, file.path(saveLoc, './data/surg_proc_delay.csv'), sep=',', row.names=FALSE)
 
 
 ###################################################################
@@ -631,7 +622,7 @@ outcomes <- querySql(conn,
                      )
 
 # Writing outcomes to csv
-write.table(outcomes, './data/surg_proc_outcomes.csv', sep=',', row.names=FALSE)
+write.table(outcomes, file.path(saveLoc, './data/surg_proc_outcomes.csv'), sep=',', row.names=FALSE)
 
 
 
@@ -643,31 +634,41 @@ write.table(outcomes, './data/surg_proc_outcomes.csv', sep=',', row.names=FALSE)
 
 ##### Pulling demographic data #####
 demo <- querySql(conn,
-                 "select person_source_value as grid, a.person_id, gender_source_value as sex, race_source_value as race, 
-                 year_of_birth
+                 "
+                 select person_source_value as grid, a.person_id, sex, race, year_of_birth
                  from person as a
+                 -- inner join with patient cohort
                  inner join 
                  (select * from procwas_delay) as b
-                 on a.person_id = b.person_id"
+                 on a.person_id = b.person_id
+                 -- left join with concept table to get sex and race concept code/name
+                 left join 
+                 (select concept_id, concept_code as sex from concept where vocabulary_id = 'Gender')  as g
+                 on a.gender_concept_id = g.concept_id
+                 left join 
+                 (select concept_id, concept_name as race from concept where vocabulary_id = 'Race')  as r
+                 on a.race_concept_id = r.concept_id
+                 "
 )
 
 # Writing outcomes to csv
-write.table(demo, './data/surg_proc_demo.csv', sep=',', row.names=FALSE)
+write.table(demo, file.path(saveLoc, './data/surg_proc_demo.csv'), sep=',', row.names=FALSE)
 
 
 ##### Pulling insurance data (ADJUST AS NEEDED SINCE THIS IS NOT OMOP) #####
-insurance <- querySql(conn,
-                 "select distinct a.person_id, INSURANCE_TYPE_1 as INSURANCE, COUNT from procwas_delay as a
-                 left join
-                 (select person_id, insurance_type_1, count(visit_occurrence_id) from enc_insurance
-                  group by person_id, insurance_type_1) as b
-                 on a.person_id = b.person_id
-                  "
-)
-
-# Writing insurance data to csv
-write.table(insurance, './data/surg_proc_insurance.csv', sep = ',', row.names=FALSE)
-
+if(haveInsurance){
+  insurance <- querySql(conn,
+                        "select distinct a.person_id, INSURANCE_TYPE_1 as INSURANCE, COUNT from procwas_delay as a
+                         left join
+                         (select person_id, insurance_type_1, count(visit_occurrence_id) from enc_insurance
+                         group by person_id, insurance_type_1) as b
+                         on a.person_id = b.person_id
+                        "
+  )
+  
+  # Writing insurance data to csv
+  write.table(insurance, file.path(saveLoc, './data/surg_proc_insurance.csv'), sep = ',', row.names=FALSE)
+}
 
 
 
@@ -678,16 +679,16 @@ write.table(insurance, './data/surg_proc_insurance.csv', sep = ',', row.names=FA
 ###### WARNING: INSURANCE INFORMATION IS NOT OMOP, PLEASE ADJUST AS NEEDED #######
 
 # Loading procedure data 
-delay <- read.table('./data/surg_proc_delay.csv', sep = ',', header=TRUE, as.is=TRUE)
-demo <- read.table('./data/surg_proc_demo.csv', sep = ',', header=TRUE, as.is=TRUE)
-outcomes <- read.table('./data/surg_proc_outcomes.csv', sep = ',', header=TRUE, as.is=TRUE)
-insurance <- read.table('./data/surg_proc_insurance.csv', sep = ',', header=TRUE, as.is=TRUE)
+delay <- read.table(file.path(saveLoc, './data/surg_proc_delay.csv'), sep = ',', header=TRUE, as.is=TRUE)
+demo <- read.table(file.path(saveLoc, './data/surg_proc_demo.csv'), sep = ',', header=TRUE, as.is=TRUE)
+outcomes <- read.table(file.path(saveLoc, './data/surg_proc_outcomes.csv'), sep = ',', header=TRUE, as.is=TRUE)
+
 
 # General Equivalence Mapping (GEM) for ICD-9-CM to ICD-10-CM
-gems <- read.table('./mapping/gems_cleaned.csv', sep = ',', header=TRUE, as.is=TRUE)
+gems <- read.table(file.path(saveLoc, './mapping/gems_cleaned.csv'), sep = ',', header=TRUE, as.is=TRUE)
 
 # ICD-10-CM descriptions
-icd <- read.table('./mapping/icd10cm_desc.csv', sep = ',', header=TRUE, as.is=TRUE, quote="\"")
+icd <- read.table(file.path(saveLoc, './mapping/icd10cm_desc.csv'), sep = ',', header=TRUE, as.is=TRUE, quote="\"")
 
 
 # Merging delay with demographic data and outcomes
@@ -745,45 +746,47 @@ proc$DX_AGE =  as.numeric(format(as.Date(proc$DX_DATE),'%Y')) -  proc$YEAR_OF_BI
 proc$PROC_YEAR =  as.numeric(format(as.Date(proc$PROC_DATE),'%Y')) 
 
 
-# Cleaning race variable
-proc$RACE[grep('B', proc$RACE)] <- 'B'
-proc$RACE[!grepl('B|^W$', proc$RACE)] <- 'O'
-
-
 # Cleaning hosptilization length
 proc$HOSP_LENGTH[proc$HOSP_LENGTH < 0] <- NA
 
 
 ##### Creating insurance status #####  (ADJUST AS NEEDED SINCE THIS IS NOT OMOP)
-# Grouping insurances
-# Commercial: Blue Cross, Blue Shield, Commerecial, HMO, Exchange
-insurance$INSURANCE[grepl('Blue|Commercial|HMO|Exchange', insurance$INSURANCE, 
-                          perl=TRUE, ignore.case = TRUE)] <- 'Commercial'
-# Government
-insurance$INSURANCE[grepl('Champus|Government', insurance$INSURANCE, 
-                          perl=TRUE, ignore.case = TRUE)] <- 'Government'
-# Medicare
-insurance$INSURANCE[grepl('Medicare', insurance$INSURANCE, 
-                          perl=TRUE, ignore.case = TRUE)] <- 'Medicare'
-# Medicaid/TennCare
-insurance$INSURANCE[grepl('Medicaid|TennCare', insurance$INSURANCE, 
-                          perl=TRUE, ignore.case = TRUE)] <- 'Medicaid'
-# Other
-insurance$INSURANCE[!(insurance$INSURANCE %in% c('Commercial', 'Government', 'Medicare', 'Medicaid'))] <- 'Other'
 
-
-# Getting most common insurance type per person
-insurance <- insurance %>% group_by(PERSON_ID) %>% slice(which.max(COUNT)) %>% distinct()
-
-# Merging with main dataframe
-proc <- merge(proc, insurance[,c('PERSON_ID', 'INSURANCE')], by = 'PERSON_ID')%>% distinct()
-
+if(haveInsurance){
+  
+  # Reading insurance data
+  insurance <- read.table(file.path(saveLoc, './data/surg_proc_insurance.csv'), sep = ',', header=TRUE, as.is=TRUE)
+  
+  # Grouping insurances
+  # Commercial: Blue Cross, Blue Shield, Commerecial, HMO, Exchange
+  insurance$INSURANCE[grepl('Blue|Commercial|HMO|Exchange', insurance$INSURANCE, 
+                            perl=TRUE, ignore.case = TRUE)] <- 'Commercial'
+  # Government
+  insurance$INSURANCE[grepl('Champus|Government', insurance$INSURANCE, 
+                            perl=TRUE, ignore.case = TRUE)] <- 'Government'
+  # Medicare
+  insurance$INSURANCE[grepl('Medicare', insurance$INSURANCE, 
+                            perl=TRUE, ignore.case = TRUE)] <- 'Medicare'
+  # Medicaid/TennCare
+  insurance$INSURANCE[grepl('Medicaid|TennCare', insurance$INSURANCE, 
+                            perl=TRUE, ignore.case = TRUE)] <- 'Medicaid'
+  # Other
+  insurance$INSURANCE[!(insurance$INSURANCE %in% c('Commercial', 'Government', 'Medicare', 'Medicaid'))] <- 'Other'
+  
+  
+  # Getting most common insurance type per person
+  insurance <- insurance %>% group_by(PERSON_ID) %>% slice(which.max(COUNT)) %>% distinct()
+  
+  # Merging with main dataframe
+  proc <- merge(proc, insurance[,c('PERSON_ID', 'INSURANCE')], by = 'PERSON_ID')%>% distinct()
+}
 
 ########################################################################################
 #           Association analysis of procedure delay and patient outcomes               #
 ########################################################################################
 
 ###### NOTE: PLEASE ADJUST COVARIATES AS NEEDED ######
+
 
 # Function to create results dataframe from regression analysis
 analyze_proc_delay <- function(data, icd, procedure){
@@ -802,42 +805,50 @@ analyze_proc_delay <- function(data, icd, procedure){
   data_subset <- data[data$ICD == icd & data$CONCEPT_CODE_D == procedure,]
   
   
-  # Creating formula based on if predictors have at least 2 factor levels (ADJUST COVARIATES AS NEEDED)
-  f_str <- " ~ PROC_DELAY + DX_AGE + PROC_YEAR + INSURANCE"
-  if (length(unique(na.omit(data_subset)$SEX)) > 1){
-    f_str <- paste(f_str, "+ SEX")
-  }
-  if (length(unique(na.omit(data_subset)$RACE)) > 1){
-    f_str <- paste(f_str, "+ RACE")
-  }
-  
-  
-  # Hospitalization length 
-  mod <- glm(as.formula(paste('HOSP_LENGTH', f_str)), data = data_subset)
-  out[nrow(out) + 1, ] <- c(icd, procedure,nrow(data_subset),
-                            'HOSP_LENGTH', 
-                            coef(mod)[2], confint.default(mod)[2,1], confint.default(mod)[2,2], 
-                            coefficients(summary(mod))[2,4])
-  
-  # Hospitalization death 
-  if (length(unique(data_subset$HOSP_DEATH)) > 1){
-    mod <- glm(as.formula(paste('HOSP_DEATH', f_str)), data = data_subset, family = 'binomial')
-    out[nrow(out) + 1, ] <- c(icd, procedure, nrow(data_subset),
-                              'HOSP_DEATH', 
+  # Skip if observation count less than 50 (adjustable threshold)
+  if(nrow(data_subset) >= 10){
+    # Creating formula based on if predictors have at least 2 factor levels (ADJUST COVARIATES AS NEEDED)
+    f_str <- " ~ PROC_DELAY + DX_AGE + PROC_YEAR"
+    # If have insurance information, add as covariate
+    if(haveInsurance){
+      f_str <- paste(f_str, '+ INSURANCE')
+    }
+    if (length(unique(na.omit(data_subset)$SEX)) > 1){
+      f_str <- paste(f_str, "+ SEX")
+    }
+    if (length(unique(na.omit(data_subset)$RACE)) > 1){
+      f_str <- paste(f_str, "+ RACE")
+    }
+
+    
+    
+    # Hospitalization length 
+    mod <- glm(as.formula(paste('HOSP_LENGTH', f_str)), data = data_subset)
+    out[nrow(out) + 1, ] <- c(icd, procedure,nrow(data_subset),
+                              'HOSP_LENGTH', 
+                              coef(mod)[2], confint.default(mod)[2,1], confint.default(mod)[2,2], 
+                              coefficients(summary(mod))[2,4])
+    
+    # Hospitalization death 
+    if (length(unique(data_subset$HOSP_DEATH)) > 1){
+      mod <- glm(as.formula(paste('HOSP_DEATH', f_str)), data = data_subset, family = 'binomial')
+      out[nrow(out) + 1, ] <- c(icd, procedure, nrow(data_subset),
+                                'HOSP_DEATH', 
+                                exp(coef(mod)[2]), 
+                                exp(confint.default(mod)[2,1]), 
+                                exp(confint.default(mod)[2,2]),
+                                coefficients(summary(mod))[2,4])
+    }
+    
+    # Readmission rate
+    mod <- glm(as.formula(paste('READMIN_180', f_str)), data = data_subset, family = 'binomial')
+    out[nrow(out) + 1, ] <- c(icd, procedure, nrow(data_subset), 
+                              'READMIN_180', 
                               exp(coef(mod)[2]), 
                               exp(confint.default(mod)[2,1]), 
                               exp(confint.default(mod)[2,2]),
                               coefficients(summary(mod))[2,4])
   }
-  
-  # Readmission rate
-  mod <- glm(as.formula(paste('READMIN_180', f_str)), data = data_subset, family = 'binomial')
-  out[nrow(out) + 1, ] <- c(icd, procedure, nrow(data_subset), 
-                            'READMIN_180', 
-                            exp(coef(mod)[2]), 
-                            exp(confint.default(mod)[2,1]), 
-                            exp(confint.default(mod)[2,2]),
-                            coefficients(summary(mod))[2,4])
   
   # Returning final dataframe
   return(out)
@@ -872,7 +883,7 @@ for(i in 1:nrow(pairs)){
 
 # Getting ICD and Procedure names
 results <- merge(proc[,c('ICD', 'ICD10CM_STR', 'CONCEPT_CODE_D', 'CONCEPT_NAME_D')] %>% distinct(), results,
-                 by.x = c('ICD', 'CONCEPT_CODE_D'), by.y = c('icd', 'cpt'))
+                 by.x = c('ICD', 'CONCEPT_CODE_D'), by.y = c('icd', 'proc'))
 
 # Renaming and rearranging columns
 colnames(results) <- c('ICD', 'PROC_CODE', 'ICD10CM_STR', 'PROC_STR', 
@@ -891,7 +902,7 @@ final$CI_UPPER <- as.numeric(final$CI_UPPER)
 
 
 # Writing to file
-write.table(final, './output/surg_proc_delay_results.csv',sep=',',row.names=FALSE)
+write.table(final, file.path(saveLoc, './output/surg_proc_delay_results.csv'),sep=',',row.names=FALSE)
 
 
 

@@ -15,8 +15,8 @@
 #       Preliminary setup          #
 ####################################
 
-# Set working directory
-setwd('WORKING_DIRECTORY')
+# Set save location
+saveLoc = ''
 
 
 # Loading required libraries
@@ -26,6 +26,12 @@ library(DatabaseConnector)
 library(survival)
 library(lubridate)
 library(MASS)
+
+
+# Flags for variables (ADJUST AS NEEDED SINCE THIS IS NOT OMOP)
+haveInsurance = T # extracting insurance information for each patient
+haveCancerStage = T # using North American Association of Central Cancer Registries (NAACCR) data
+
 
 # Defining variables of interest
 phecode = '153' # Colorectal cancer  153
@@ -70,8 +76,10 @@ conn <- connect(connectionDetails)
 
 
 # Loading ICD to phecode mappings
-icd9cm_map <- read.table('./mapping/ICD9CM_to_Phecode_mapping.csv', sep=',', header=TRUE, as.is=TRUE, quote="\"")
-icd10cm_map <- read.table('./mapping/ICD10CM_to_Phecode_mapping.csv', sep=',', header=TRUE, as.is=TRUE, quote="\"")
+icd9cm_map <- read.table(file.path(saveLoc,'./mapping/ICD9CM_to_Phecode_mapping.csv'), 
+                         sep=',', header=TRUE, as.is=TRUE, quote="\"")
+icd10cm_map <- read.table(file.path(saveLoc,'./mapping/ICD10CM_to_Phecode_mapping.csv'),
+                          sep=',', header=TRUE, as.is=TRUE, quote="\"")
 
 
 # Identifying ICDs of interest by phecode
@@ -153,12 +161,19 @@ executeSql(conn,
 data <- querySql(conn,
                  "-- demographic data
                   select distinct p.person_id, person_source_value as grid, 
-                  gender_source_value as sex, race_source_value as race, birth_datetime as birth_date,
+                  sex, race, birth_datetime as birth_date,
                   dx_date, proc_date, death_date, last_follow_date
                   from person as p
                   -- inner join with patient cohort and procedures
                   inner join diag_proc as dp
                   on p.person_id = dp.person_id
+                  -- left join with concept table to get sex and race concept names
+                  left join 
+                  (select concept_id, concept_code as sex from concept where vocabulary_id = 'Gender')  as g
+                  on p.gender_concept_id = g.concept_id
+                  left join 
+                  (select concept_id, concept_name as race from concept where vocabulary_id = 'Race')  as r
+                  on p.race_concept_id = r.concept_id
                   -- left join with death table
                   left join 
                   (select * from death
@@ -174,51 +189,55 @@ data <- querySql(conn,
 )
 
 # Writing to final data csv
-write.table(data, paste('./data/screen_diag_proc_',phecode,'.csv', sep=''), sep = ',', row.names=FALSE)
+write.table(data,file.path(saveLoc, paste0('./data/screen_diag_proc_',phecode,'.csv')), sep = ',', row.names=FALSE)
 
 
 ##### Pulling insurance data (ADJUST AS NEEDED SINCE THIS IS NOT OMOP) #####
-insurance <- querySql(conn,
-                      "select a.*, INSURANCE_TYPE_1 as INSURANCE, COUNT from diag_proc as a
-                 left join
-                 (select person_id, insurance_type_1, count(visit_occurrence_id) from enc_insurance
-                  group by person_id, insurance_type_1) as b
-                 on a.person_id = b.person_id
-                  "
-)
 
-# Writing insurance data to csv
-write.table(insurance, paste('./data/screen_insurance_',phecode,'.csv', sep=''), sep = ',', row.names=FALSE)
-
+if(haveInsurance){
+  insurance <- querySql(conn,
+                        "
+                        select a.*, INSURANCE_TYPE_1 as INSURANCE, COUNT from diag_proc as a
+                        left join
+                        (select person_id, insurance_type_1, count(visit_occurrence_id) from enc_insurance
+                        group by person_id, insurance_type_1) as b
+                        on a.person_id = b.person_id
+                        "
+  )
+  
+  # Writing insurance data to csv
+  write.table(insurance,file.path(saveLoc, paste0('./data/screen_insurance_',phecode,'.csv')), sep = ',', row.names=FALSE)
+}
 
 ##### Pulling cancer stage (ADJUST AS NEEDED SINCE THIS IS NOT OMOP) #####
-cancer_stage <- querySql(conn,
-                         "
-                         select distinct a.person_id,
-                         case when tnm_path_stage_group in ('99', '88', '') then null
-                         else tnm_path_stage_group end as path_stage, 
-                         case when tnm_clin_stage_group in ('99', '88', '') then null
-                         else tnm_clin_stage_group end as clin_stage, 
-                         case when path_stage is not null then path_stage
-                         else clin_stage end as dx_stage
-                         from tr_naaccr as a
-                         -- finding cancer registry entry closest to ICD diagnosis date
-                         inner join
-                         (select distinct cancer_registry.person_id, min(date_dx) as date_dx
+if(haveCancerStage){
+  cancer_stage <- querySql(conn,
+                           "
+                           select distinct a.person_id,
+                           case when tnm_path_stage_group in ('99', '88', '') then null
+                           else tnm_path_stage_group end as path_stage, 
+                           case when tnm_clin_stage_group in ('99', '88', '') then null
+                           else tnm_clin_stage_group end as clin_stage, 
+                           case when path_stage is not null then path_stage
+                           else clin_stage end as dx_stage
+                           from tr_naaccr as a
+                           -- finding cancer registry entry closest to ICD diagnosis date
+                           inner join
+                           (select distinct cancer_registry.person_id, min(date_dx) as date_dx
                            from tr_naaccr as cancer_registry
                            inner join diag_proc as diag_proc
                            on cancer_registry.person_id = diag_proc.person_id
                            where abs(dx_date - date_dx) <= 90
                            group by cancer_registry.person_id) as b
-                         on a.person_id = b.person_id
-                         and a.date_dx = b.date_dx
-                         "
-)
-
-
-# Writing cancer stage data to csv
-write.table(cancer_stage, paste('./data/screen_cancer_stage_',phecode,'.csv', sep=''), sep = ',', row.names=FALSE)
-
+                           on a.person_id = b.person_id
+                           and a.date_dx = b.date_dx
+                           "
+  )
+  
+  
+  # Writing cancer stage data to csv
+  write.table(cancer_stage,file.path(saveLoc, paste0('./data/screen_cancer_stage_',phecode,'.csv')), sep = ',', row.names=FALSE)
+}
 
 
 
@@ -230,16 +249,8 @@ write.table(cancer_stage, paste('./data/screen_cancer_stage_',phecode,'.csv', se
 
 
 #####  Loading data ##### 
-data <- read.table(paste('./data/screen_diag_proc_',phecode,'.csv', sep=''), 
+data <- read.table(file.path(saveLoc,paste0('./data/screen_diag_proc_',phecode,'.csv')), 
                    sep = ',', header=TRUE, as.is=TRUE)
-insurance <- read.table(paste('./data/screen_insurance_',phecode,'.csv', sep=''), 
-                        sep = ',', header=TRUE, as.is=TRUE)
-cancer_stage <- read.table(paste('./data/screen_cancer_stage_', phecode,'.csv', sep=''), 
-                           sep = ',', header=TRUE, as.is=TRUE)
-
-#####  Cleaning race variable ##### 
-data$RACE[grep('B', data$RACE)] <- 'B'
-data$RACE[!grepl('B|^W$', data$RACE)] <- 'O'
 
 
 ##### Creating time related variables ##### 
@@ -293,41 +304,49 @@ data$SURV_TIME_5 <- ifelse(data$SURV_STATUS_5,
 
 
 ##### Creating insurance status #####  (ADJUST AS NEEDED SINCE THIS IS NOT OMOP)
-# Grouping insurances
-# Commercial: Blue Cross, Blue Shield, Commerecial, HMO, Exchange
-insurance$INSURANCE[grepl('Blue|Commercial|HMO|Exchange', insurance$INSURANCE, 
-                          perl=TRUE, ignore.case = TRUE)] <- 'Commercial'
-# Government
-insurance$INSURANCE[grepl('Champus|Government', insurance$INSURANCE, 
-                          perl=TRUE, ignore.case = TRUE)] <- 'Government'
-# Medicare
-insurance$INSURANCE[grepl('Medicare', insurance$INSURANCE, 
-                          perl=TRUE, ignore.case = TRUE)] <- 'Medicare'
-# Medicaid/TennCare
-insurance$INSURANCE[grepl('Medicaid|TennCare', insurance$INSURANCE, 
-                          perl=TRUE, ignore.case = TRUE)] <- 'Medicaid'
-# Other
-insurance$INSURANCE[!(insurance$INSURANCE %in% c('Commercial', 'Government', 'Medicare', 'Medicaid'))] <- 'Other'
-
-
-# Getting most common insurance type per person
-insurance <- insurance %>% group_by(PERSON_ID) %>% slice(which.max(COUNT)) %>% distinct()
-
-# Merging with main dataframe
-data <- merge(data, insurance[,c('PERSON_ID', 'INSURANCE')], by = 'PERSON_ID') %>% distinct()
-
+if(haveInsurance){
+  insurance <- read.table(file.path(saveLoc,paste0('./data/screen_insurance_',phecode,'.csv')), 
+                          sep = ',', header=TRUE, as.is=TRUE)
+  
+  # Grouping insurances
+  # Commercial: Blue Cross, Blue Shield, Commerecial, HMO, Exchange
+  insurance$INSURANCE[grepl('Blue|Commercial|HMO|Exchange', insurance$INSURANCE, 
+                            perl=TRUE, ignore.case = TRUE)] <- 'Commercial'
+  # Government
+  insurance$INSURANCE[grepl('Champus|Government', insurance$INSURANCE, 
+                            perl=TRUE, ignore.case = TRUE)] <- 'Government'
+  # Medicare
+  insurance$INSURANCE[grepl('Medicare', insurance$INSURANCE, 
+                            perl=TRUE, ignore.case = TRUE)] <- 'Medicare'
+  # Medicaid/TennCare
+  insurance$INSURANCE[grepl('Medicaid|TennCare', insurance$INSURANCE, 
+                            perl=TRUE, ignore.case = TRUE)] <- 'Medicaid'
+  # Other
+  insurance$INSURANCE[!(insurance$INSURANCE %in% c('Commercial', 'Government', 'Medicare', 'Medicaid'))] <- 'Other'
+  
+  
+  # Getting most common insurance type per person
+  insurance <- insurance %>% group_by(PERSON_ID) %>% slice(which.max(COUNT)) %>% distinct()
+  
+  # Merging with main dataframe
+  data <- merge(data, insurance[,c('PERSON_ID', 'INSURANCE')], by = 'PERSON_ID') %>% distinct()
+}
 
 ##### Creating cancer stage variables #####  (ADJUST AS NEEDED SINCE THIS IS NOT OMOP)
-cancer_stage$DX_STAGE[grep('0|O', cancer_stage$DX_STAGE)]  <- 0
-cancer_stage$DX_STAGE[grep('1', cancer_stage$DX_STAGE)]  <- 1
-cancer_stage$DX_STAGE[grep('2', cancer_stage$DX_STAGE)]  <- 2 
-cancer_stage$DX_STAGE[grep('3', cancer_stage$DX_STAGE)]  <- 3
-cancer_stage$DX_STAGE[grep('4', cancer_stage$DX_STAGE)]  <- 4
-cancer_stage$DX_STAGE <- as.factor(cancer_stage$DX_STAGE)
-
-# Merging cancer data
-data <- merge(data, cancer_stage[,c('PERSON_ID', 'DX_STAGE')], by='PERSON_ID', all.x=TRUE)
-
+if(haveCancerStage){
+  cancer_stage <- read.table(file.path(saveLoc,paste0('./data/screen_cancer_stage_', phecode,'.csv')), 
+                             sep = ',', header=TRUE, as.is=TRUE)
+  
+  cancer_stage$DX_STAGE[grep('0|O', cancer_stage$DX_STAGE)]  <- 0
+  cancer_stage$DX_STAGE[grep('1', cancer_stage$DX_STAGE)]  <- 1
+  cancer_stage$DX_STAGE[grep('2', cancer_stage$DX_STAGE)]  <- 2 
+  cancer_stage$DX_STAGE[grep('3', cancer_stage$DX_STAGE)]  <- 3
+  cancer_stage$DX_STAGE[grep('4', cancer_stage$DX_STAGE)]  <- 4
+  cancer_stage$DX_STAGE <- as.factor(cancer_stage$DX_STAGE)
+  
+  # Merging cancer data
+  data <- merge(data, cancer_stage[,c('PERSON_ID', 'DX_STAGE')], by='PERSON_ID', all.x=TRUE)
+}
 
 #########################################################
 #          Cox Proportional Hazards Model               #
@@ -349,11 +368,16 @@ results <-   data.frame(PHECODE = character(),
 
 
 # Creating formula string (ADJUST COVARIATES AS NEEDED)
-form_str <- "PROC_DELAY + RACE + DX_AGE + PROC_FREQ + PROC_YEAR + INSURANCE"
+form_str <- "PROC_DELAY + RACE + DX_AGE + PROC_FREQ + PROC_YEAR"
 
 # If SEX is not all M or F, add sex as covariate
 if(length(unique(data$SEX)) > 1){
-  from_str <- paste(form_str, '+ SEX')
+  form_str <- paste(form_str, '+ SEX')
+}
+
+# If have insurance information, add as covariate
+if(haveInsurance){
+  form_str <- paste(form_str, '+ INSURANCE')
 }
 
 # 3-year survival Cox proportional hazards
@@ -393,32 +417,38 @@ results[nrow(results) + 1, ] <- c(phecode,
 
 ###### NOTE: PLEASE ADJUST COVARIATES AS NEEDED ######
 
-# Cancer stage ordinal logistic regression
-ord_stage <- polr(as.formula(paste('DX_STAGE ~', form_str)), 
-                  data = data)
+# Can only run cancer stage at diagnosis analysis if cancer stage data exists
+if(haveCancerStage){
+  # Cancer stage ordinal logistic regression
+  ord_stage <- polr(as.formula(paste('DX_STAGE ~', form_str)), 
+                    data = data)
+  
+  # Calculating p-value
+  p <- 2*pt(abs(coef(summary(ord_stage))[1,3]), ord_stage$n, lower.tail=FALSE)
+  
+  # Adding to results dataframe
+  results[nrow(results) + 1, ] <- c(phecode,
+                                    procedure, 
+                                    'CANCER_STAGE', 
+                                    ord_stage$n,
+                                    NA,
+                                    exp(coef(ord_stage)[1]), 
+                                    exp(confint.default(ord_stage)[1,1]), 
+                                    exp(confint.default(ord_stage)[1,2]),
+                                    p)
 
-# Calculating p-value
-p <- 2*pt(abs(coef(summary(ord_stage))[1,3]), ord_stage$n, lower.tail=FALSE)
-
-# Adding to results dataframe
-results[nrow(results) + 1, ] <- c(phecode,
-                                  procedure, 
-                                  'CANCER_STAGE', 
-                                  ord_stage$n,
-                                  NA,
-                                  exp(coef(ord_stage)[1]), 
-                                  exp(confint.default(ord_stage)[1,1]), 
-                                  exp(confint.default(ord_stage)[1,2]),
-                                  p)
+}
 
 
+# Formatting odds ratio
 results$OR_FORMAT <- mapply(function(x,y,z) sprintf('%.2f (%.2f to %.2f)', x,y,z), 
                             as.numeric(results$BETA_OR), 
                             as.numeric(results$CI_LOWER), 
                             as.numeric(results$CI_UPPER))
 
+
 # Writing out results
-write.table(results, paste('./output/screen_delay_', phecode, '.csv', sep = ''), 
+write.table(results,file.path(saveLoc, paste0('./output/screen_delay_', phecode, '.csv')), 
             sep = ',', row.names=FALSE)
 
 
